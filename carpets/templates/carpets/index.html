@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Виртуальный Ткач</title>
+    <!-- Подключаем Tailwind CSS для современного дизайна -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Иконки -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans antialiased min-h-screen flex flex-col">
+
+    <nav class="bg-indigo-900 text-white shadow-lg p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold tracking-wider"><i class="fa-solid fa-wand-magic-sparkles mr-2"></i>AI Carpet Weaver</h1>
+            <a href="/admin" class="text-indigo-200 hover:text-white transition">Панель управления (Admin)</a>
+        </div>
+    </nav>
+
+    <main class="container mx-auto mt-8 p-4 flex-grow grid grid-cols-1 md:grid-cols-12 gap-8">
+
+        <div class="md:col-span-4 bg-white rounded-xl shadow-md p-6 h-fit">
+            <h2 class="text-xl font-bold mb-4 border-b pb-2"><i class="fa-solid fa-sliders mr-2"></i>Параметры генерации</h2>
+
+            <form id="generateForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Название дизайна</label>
+                    <input type="text" id="title" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Например: Осенний лофт" required>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Коллекция (Станок & Палитра)</label>
+                    <select id="collection_id" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" required>
+                        <option value="" disabled selected>Выберите коллекцию...</option>
+                        {% for col in collections %}
+                            <option value="{{ col.id }}">{{ col.name }} (Цветов: {{ col.color_count }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- НОВОЕ: Режим генерации (Структура) -->
+                <div class="bg-indigo-50 border border-indigo-100 p-3 rounded-lg">
+                    <label class="block text-sm font-semibold mb-1 text-indigo-900"><i class="fa-solid fa-chess-board mr-1"></i> Структура ковра</label>
+                    <select id="design_mode" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" required>
+                        <option value="standard">Свободный / Модерн (Асимметрия)</option>
+                        <option value="symmetry_quarter">Классика (Зеркальная симметрия 1/4)</option>
+                        <option value="seamless">Рулонный (Бесшовный раппорт)</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold mb-1">Ширина (метры)</label>
+                        <input type="number" step="0.1" id="width" class="w-full border rounded-lg p-2 outline-none" value="2.0" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold mb-1">Длина (метры)</label>
+                        <input type="number" step="0.1" id="length" class="w-full border rounded-lg p-2 outline-none" value="3.0" required>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Промпт (Детали узора)</label>
+                    <textarea id="prompt" rows="3" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Напишите детали: медальон, узоры, цветы..." required></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Референс (Фото клиента) <span class="text-gray-400 font-normal">- необязательно</span></label>
+                    <input type="file" id="source_image" accept="image/*" class="w-full border rounded-lg p-2 outline-none">
+                </div>
+
+                <div id="strengthContainer" class="hidden mt-2 p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
+                    <label class="block text-sm font-semibold mb-1 text-indigo-900">Фантазия ИИ: <span id="strengthValue">20%</span></label>
+                    <input type="range" id="ai_strength" min="1" max="100" value="20" class="w-full accent-indigo-600">
+                    <p class="text-xs text-indigo-700 mt-1">Для фото людей ставьте <b>10-30%</b>. Для узоров — <b>60-80%</b>.</p>
+                </div>
+
+                <button type="submit" id="submitBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 mt-4 flex justify-center items-center">
+                    <span id="btnText">Сгенерировать дизайн</span>
+                    <i id="btnSpinner" class="fa-solid fa-spinner fa-spin ml-2 hidden"></i>
+                </button>
+            </form>
+        </div>
+
+        <div class="md:col-span-8 bg-white rounded-xl shadow-md p-6 flex flex-col">
+            <h2 class="text-xl font-bold mb-4 border-b pb-2"><i class="fa-solid fa-image mr-2"></i>Визуализация</h2>
+
+            <div id="resultArea" class="flex-grow flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 min-h-[400px] p-4 relative">
+
+                <div id="idleState" class="text-center text-gray-400">
+                    <i class="fa-solid fa-layer-group text-6xl mb-4"></i>
+                    <p>Заполните форму слева и нажмите "Сгенерировать"</p>
+                </div>
+
+                <div id="loadingState" class="hidden text-center text-indigo-600">
+                    <i class="fa-solid fa-cog fa-spin text-6xl mb-4"></i>
+                    <p class="font-semibold text-lg">ИИ ткёт эскиз...</p>
+                    <p class="text-sm text-gray-500 mt-2">Это может занять от 10 до 30 секунд. Пожалуйста, подождите.</p>
+                </div>
+
+                <div id="successState" class="hidden w-full h-full flex flex-col items-center justify-between">
+                    <img id="aiImage" src="" alt="Сгенерированный ковер" class="max-h-[500px] shadow-lg rounded-lg object-contain mb-6">
+
+                    <div class="w-full bg-green-50 border border-green-200 rounded-lg p-4 flex justify-between items-center">
+                        <div>
+                            <h3 class="font-bold text-green-800">✅ Конвертация завершена</h3>
+                            <p class="text-sm text-green-600">Квантование палитры выполнено. Файл готов для станка.</p>
+                        </div>
+                        <a id="downloadBtn" href="#" download class="bg-green-600 hover:bg-green-700 text-white py-2 px-6 rounded-lg font-bold shadow transition flex items-center">
+                            <i class="fa-solid fa-download mr-2"></i> Скачать *.BMP
+                        </a>
+                    </div>
+                </div>
+
+                <div id="errorState" class="hidden text-center text-red-500">
+                    <i class="fa-solid fa-triangle-exclamation text-6xl mb-4"></i>
+                    <p id="errorMsg" class="font-semibold">Произошла ошибка</p>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.getElementById('generateForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const btn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const btnSpinner = document.getElementById('btnSpinner');
+
+            const idle = document.getElementById('idleState');
+            const loading = document.getElementById('loadingState');
+            const success = document.getElementById('successState');
+            const error = document.getElementById('errorState');
+
+            const fileInput = document.getElementById('source_image');
+            const strengthContainer = document.getElementById('strengthContainer');
+            const strengthSlider = document.getElementById('ai_strength');
+            const strengthValue = document.getElementById('strengthValue');
+
+            fileInput.addEventListener('change', function() {
+                if (this.files.length > 0) {
+                    strengthContainer.classList.remove('hidden');
+                } else {
+                    strengthContainer.classList.add('hidden');
+                }
+            });
+
+            strengthSlider.addEventListener('input', function() {
+                strengthValue.innerText = this.value + '%';
+            });
+
+            btn.disabled = true;
+            btn.classList.add('opacity-75', 'cursor-not-allowed');
+            btnText.innerText = "Обработка...";
+            btnSpinner.classList.remove('hidden');
+
+            idle.classList.add('hidden');
+            success.classList.add('hidden');
+            error.classList.add('hidden');
+            loading.classList.remove('hidden');
+
+            const formData = new FormData();
+            formData.append('title', document.getElementById('title').value);
+            formData.append('collection_id', document.getElementById('collection_id').value);
+            formData.append('width', document.getElementById('width').value);
+            formData.append('length', document.getElementById('length').value);
+            formData.append('prompt', document.getElementById('prompt').value);
+            // НОВОЕ: Отправляем режим дизайна на сервер
+            formData.append('design_mode', document.getElementById('design_mode').value);
+
+            if (fileInput.files.length > 0) {
+                formData.append('source_image', fileInput.files[0]);
+                formData.append('ai_strength', strengthSlider.value);
+            }
+
+            try {
+                const response = await fetch('/api/generate/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                loading.classList.add('hidden');
+
+                if (response.ok && data.status === 'success') {
+                    document.getElementById('aiImage').src = data.ai_image_url;
+                    document.getElementById('downloadBtn').href = data.bmp_file_url;
+                    success.classList.remove('hidden');
+                    success.classList.add('flex');
+                } else {
+                    document.getElementById('errorMsg').innerText = data.message || "Неизвестная ошибка";
+                    error.classList.remove('hidden');
+                }
+
+            } catch (err) {
+                loading.classList.add('hidden');
+                document.getElementById('errorMsg').innerText = "Ошибка соединения с сервером";
+                error.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-75', 'cursor-not-allowed');
+                btnText.innerText = "Сгенерировать дизайн";
+                btnSpinner.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
